@@ -1,0 +1,10 @@
+target/
+Cargo.lock
+.git/
+.gitignore
+*.md
+.vscode/
+.idea/
+*.swp
+*.swo
+

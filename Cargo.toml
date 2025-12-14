@@ -1,0 +1,57 @@
+[package]
+name = "kimai-ml"
+version = "0.1.0"
+edition = "2021"
+authors = ["localzet"]
+description = "ML models for Kimai Aggregator (Rust version)"
+license = "MIT"
+
+[lib]
+name = "kimai_ml"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# ML библиотеки
+ndarray = "0.15"
+linfa = "0.7"
+linfa-clustering = "0.7"
+linfa-tree = "0.7"
+linfa-linear = "0.7"
+
+# Сериализация
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# API сервер
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+tower = "0.4"
+tower-http = { version = "0.5", features = ["cors"] }
+
+# Утилиты
+anyhow = "1.0"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+
+# Логирование
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# WASM (опционально, для Electron)
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
+web-sys = { version = "0.3", optional = true }
+
+[features]
+default = []
+wasm = ["wasm-bindgen", "js-sys", "web-sys"]
+
+[dev-dependencies]
+wasm-bindgen-test = { version = "0.3", optional = true }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
