@@ -1,7 +1,7 @@
 # Multi-stage build для оптимизации размера образа
 
 # Stage 1: Builder
-FROM rust:1.75-slim as builder
+FROM rust:1.75-slim AS builder
 
 WORKDIR /app
 

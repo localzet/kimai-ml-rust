@@ -48,7 +48,7 @@ default = []
 wasm = ["wasm-bindgen", "js-sys", "web-sys"]
 
 [dev-dependencies]
-wasm-bindgen-test = { version = "0.3", optional = true }
+# wasm-bindgen-test можно добавить позже если нужны WASM тесты
 
 [profile.release]
 opt-level = 3
