@@ -412,11 +412,13 @@ impl ForecastingModel {
             "stable"
         };
 
-        // Прогноз по проектам (упрощенный - пропорционально текущему распределению)
+        // Прогноз по проектам с учетом целей пользователя
         let mut weekly_hours_by_project = std::collections::HashMap::new();
         if let Some(last_week) = weeks.last() {
             let total_current = last_week.total_hours;
+            
             if total_current > 0.0 {
+                // Без целей - пропорционально текущему распределению
                 for stat in &last_week.project_stats {
                     let ratio = stat.hours / total_current;
                     weekly_hours_by_project.insert(stat.project_id, ensemble_pred * ratio);

@@ -124,9 +124,45 @@ impl RecommendationEngine {
         data: &MLInputData,
     ) -> Vec<RecommendationOutput> {
         let mut recommendations = Vec::new();
+        
+        // Учитываем цели по проектам из предпочтений пользователя
+        let project_goals: HashMap<i32, f64> = data.settings
+            .user_preferences
+            .as_ref()
+            .map(|prefs| prefs.project_goals.clone())
+            .unwrap_or_default();
 
         if efficiency.len() < 2 {
             return recommendations;
+        }
+        
+        // Если есть цели по проектам, рекомендуем равномерное распределение
+        if !project_goals.is_empty() {
+            for (project_id, goal_hours) in &project_goals {
+                let current_hours = distribution.get(project_id).copied().unwrap_or(0.0);
+                let project_name = self.get_project_name(data, *project_id);
+                
+                if current_hours < *goal_hours * 0.9 {
+                    recommendations.push(RecommendationOutput {
+                        r#type: "time_allocation".to_string(),
+                        priority: "high".to_string(),
+                        title: format!("Увеличьте время на проект '{}'", project_name),
+                        description: format!(
+                            "Текущее время: {:.1} ч/неделю, цель: {:.1} ч/неделю. Рекомендуется равномерное распределение в течение недели.",
+                            current_hours, goal_hours
+                        ),
+                        action_items: vec![
+                            format!("Распределите {:.1} часов равномерно по рабочим дням", goal_hours),
+                            "Используйте оптимальные часы работы для этого проекта".to_string(),
+                        ],
+                        expected_impact: format!("Достижение цели по проекту '{}'", project_name),
+                        confidence: 0.8,
+                    });
+                }
+            }
+            if !recommendations.is_empty() {
+                return recommendations;
+            }
         }
 
         // Сортировка по эффективности

@@ -12,7 +12,7 @@ use tracing_subscriber;
 
 use kimai_ml::{
     types::{MLInputData, MLOutputData},
-    ForecastingModel, AnomalyDetector, RecommendationEngine, ProductivityAnalyzer,
+    ForecastingModel, AnomalyDetector, RecommendationEngine, ProductivityAnalyzer, LearningModule,
 };
 
 #[derive(Clone)]
@@ -21,6 +21,7 @@ struct AppState {
     anomaly_detector: std::sync::Arc<tokio::sync::Mutex<AnomalyDetector>>,
     recommendation_engine: std::sync::Arc<tokio::sync::Mutex<RecommendationEngine>>,
     productivity_analyzer: std::sync::Arc<tokio::sync::Mutex<ProductivityAnalyzer>>,
+    learning_module: std::sync::Arc<tokio::sync::Mutex<LearningModule>>,
 }
 
 #[tokio::main]
@@ -34,7 +35,8 @@ async fn main() {
         forecasting_model: std::sync::Arc::new(tokio::sync::Mutex::new(ForecastingModel::new())),
         anomaly_detector: std::sync::Arc::new(tokio::sync::Mutex::new(AnomalyDetector::new(0.1))),
         recommendation_engine: std::sync::Arc::new(tokio::sync::Mutex::new(RecommendationEngine::new())),
-        productivity_analyzer: std::sync::Arc::new(tokio::sync::Mutex::new(ProductivityAnalyzer)),
+        productivity_analyzer: std::sync::Arc::new(tokio::sync::Mutex::new(ProductivityAnalyzer::new())),
+        learning_module: std::sync::Arc::new(tokio::sync::Mutex::new(LearningModule::new(1000))),
     };
 
     // CORS
@@ -50,6 +52,7 @@ async fn main() {
         .route("/api/detect-anomalies", post(detect_anomalies))
         .route("/api/recommendations", post(get_recommendations))
         .route("/api/productivity", post(analyze_productivity))
+        .route("/api/learn", post(learn_from_error))
         .layer(cors)
         .with_state(state);
 
@@ -97,10 +100,23 @@ async fn predict(
         } else {
             weeks.iter().map(|w| w.total_hours).sum::<f64>() / weeks.len() as f64
         };
+        
+        // Учитываем цели по проектам
+        let mut weekly_hours_by_project = std::collections::HashMap::new();
+        if let Some(prefs) = &data.settings.user_preferences {
+            let total_goals: f64 = prefs.project_goals.values().sum();
+            if total_goals > 0.0 {
+                for (project_id, goal_hours) in &prefs.project_goals {
+                    let ratio = goal_hours / total_goals;
+                    weekly_hours_by_project.insert(*project_id, avg_hours * ratio);
+                }
+            }
+        }
+        
         return Ok(Json(MLOutputData {
             forecasting: Some(kimai_ml::types::ForecastingOutput {
                 weekly_hours: avg_hours,
-                weekly_hours_by_project: std::collections::HashMap::new(),
+                weekly_hours_by_project,
                 monthly_hours: avg_hours * 4.0,
                 confidence: 0.3,
                 trend: "stable".to_string(),
@@ -117,15 +133,35 @@ async fn predict(
     }
 
     // Прогнозирование
-    match model.predict(&weeks) {
-        Ok(forecasting) => Ok(Json(MLOutputData {
-            forecasting: Some(forecasting),
-            anomalies: None,
-            recommendations: None,
-            productivity: None,
-        })),
-        Err(e) => Err(format!("Prediction error: {}", e)),
+    let mut forecasting_result = model.predict(&weeks)?;
+    
+    // Применяем корректирующий фактор из модуля обучения
+    let learning = state.learning_module.lock().await;
+    let correction_factor = learning.get_correction_factor("forecasting");
+    let confidence_adjustment = learning.get_confidence_adjustment("forecasting");
+    
+    forecasting_result.weekly_hours *= correction_factor;
+    forecasting_result.monthly_hours *= correction_factor;
+    forecasting_result.confidence *= confidence_adjustment;
+    
+    // Учитываем цели по проектам при распределении
+    if let Some(prefs) = &data.settings.user_preferences {
+        let total_goals: f64 = prefs.project_goals.values().sum();
+        if total_goals > 0.0 {
+            forecasting_result.weekly_hours_by_project.clear();
+            for (project_id, goal_hours) in &prefs.project_goals {
+                let ratio = goal_hours / total_goals;
+                forecasting_result.weekly_hours_by_project.insert(*project_id, forecasting_result.weekly_hours * ratio);
+            }
+        }
     }
+    
+    Ok(Json(MLOutputData {
+        forecasting: Some(forecasting_result),
+        anomalies: None,
+        recommendations: None,
+        productivity: None,
+    }))
 }
 
 async fn detect_anomalies(
@@ -225,7 +261,9 @@ async fn analyze_productivity(
         year: e.year,
     }).collect();
 
-    let analyzer = state.productivity_analyzer.lock().await;
+    // Создаем анализатор с предпочтениями пользователя
+    let preferences = data.settings.user_preferences.clone();
+    let analyzer = kimai_ml::ProductivityAnalyzer::with_preferences(preferences);
     let productivity = analyzer.analyze(&entries);
 
     Ok(Json(MLOutputData {
@@ -234,5 +272,41 @@ async fn analyze_productivity(
         recommendations: None,
         productivity: Some(productivity),
     }))
+}
+
+#[derive(Debug, Deserialize)]
+struct LearnRequest {
+    prediction_type: String,
+    predicted_value: f64,
+    actual_value: f64,
+    context: Option<serde_json::Value>,
+}
+
+async fn learn_from_error(
+    State(state): State<AppState>,
+    Json(req): Json<LearnRequest>,
+) -> Result<Json<serde_json::Value>, String> {
+    tracing::info!("Learning from error: {} predicted={}, actual={}", 
+        req.prediction_type, req.predicted_value, req.actual_value);
+
+    let error = req.predicted_value - req.actual_value;
+    
+    let mut learning = state.learning_module.lock().await;
+    learning.record_error(kimai_ml::PredictionError {
+        prediction_type: req.prediction_type.clone(),
+        predicted_value: req.predicted_value,
+        actual_value: req.actual_value,
+        error,
+        context: req.context.unwrap_or(serde_json::json!({})),
+    });
+
+    let correction_factor = learning.get_correction_factor(&req.prediction_type);
+    let confidence_adjustment = learning.get_confidence_adjustment(&req.prediction_type);
+
+    Ok(Json(serde_json::json!({
+        "status": "recorded",
+        "correction_factor": correction_factor,
+        "confidence_adjustment": confidence_adjustment,
+    })))
 }
 

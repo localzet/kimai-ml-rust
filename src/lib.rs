@@ -8,3 +8,6 @@ pub use types::*;
 pub use models::*;
 pub use preprocessing::*;
 
+// Re-export для удобства
+pub use models::learning::{LearningModule, PredictionError};
+

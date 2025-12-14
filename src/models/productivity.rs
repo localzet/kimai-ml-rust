@@ -3,11 +3,23 @@
 use std::collections::HashMap;
 use chrono::DateTime;
 
-use crate::types::{TimesheetEntry, ProductivityOutput, OptimalWorkHours, BreakRecommendations, EfficiencyPoint};
+use crate::types::{TimesheetEntry, ProductivityOutput, OptimalWorkHours, BreakRecommendations, EfficiencyPoint, UserPreferences};
 
-pub struct ProductivityAnalyzer;
+pub struct ProductivityAnalyzer {
+    preferences: Option<UserPreferences>,
+}
 
 impl ProductivityAnalyzer {
+    pub fn new() -> Self {
+        Self {
+            preferences: None,
+        }
+    }
+
+    pub fn with_preferences(preferences: Option<UserPreferences>) -> Self {
+        Self { preferences }
+    }
+
     pub fn analyze(&self, entries: &[TimesheetEntry]) -> ProductivityOutput {
         // 1. Анализ по часам дня
         let hourly_efficiency = self.analyze_hourly_efficiency(entries);
@@ -88,31 +100,76 @@ impl ProductivityAnalyzer {
         hourly_efficiency: &[EfficiencyPoint],
         daily_efficiency: &HashMap<i32, f64>,
     ) -> OptimalWorkHours {
+        let prefs = self.preferences.as_ref();
+        let sleep_start = prefs.map(|p| p.sleep_start_hour).unwrap_or(0);
+        let sleep_end = prefs.map(|p| p.sleep_end_hour).unwrap_or(8);
+        let no_work_before_sleep = prefs.map(|p| p.no_work_before_sleep_hours).unwrap_or(2);
+        let work_on_weekends = prefs.map(|p| p.work_on_weekends).unwrap_or(false);
+
+        // Фильтруем часы с учетом предпочтений пользователя
+        let mut filtered_efficiency: Vec<_> = hourly_efficiency.iter()
+            .filter(|e| {
+                // Исключаем часы сна
+                if e.hour >= sleep_start && e.hour < sleep_end {
+                    return false;
+                }
+                // Исключаем часы перед сном
+                if sleep_start > 0 {
+                    let no_work_start = (sleep_start - no_work_before_sleep + 24) % 24;
+                    if no_work_start <= sleep_start {
+                        if e.hour >= no_work_start && e.hour < sleep_start {
+                            return false;
+                        }
+                    } else {
+                        if e.hour >= no_work_start || e.hour < sleep_start {
+                            return false;
+                        }
+                    }
+                }
+                true
+            })
+            .collect();
+
         // Сортировка по эффективности
-        let mut sorted: Vec<_> = hourly_efficiency.iter().collect();
-        sorted.sort_by(|a, b| b.efficiency.partial_cmp(&a.efficiency).unwrap_or(std::cmp::Ordering::Equal));
+        filtered_efficiency.sort_by(|a, b| b.efficiency.partial_cmp(&a.efficiency).unwrap_or(std::cmp::Ordering::Equal));
 
         // Топ-8 часов
-        let top_hours: Vec<i32> = sorted
+        let top_hours: Vec<i32> = filtered_efficiency
             .iter()
             .take(8)
             .filter(|e| e.efficiency > 0.0)
             .map(|e| e.hour)
             .collect();
 
-        // Топ-5 дней
+        // Топ дней (исключаем выходные, если не работаем на выходных)
         let mut sorted_days: Vec<_> = daily_efficiency.iter().collect();
         sorted_days.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
-        let top_days: Vec<i32> = sorted_days.iter().take(5).map(|(&d, _)| d).collect();
+        
+        let mut top_days: Vec<i32> = sorted_days.iter()
+            .filter(|(&&day, _)| {
+                if !work_on_weekends {
+                    // 0 = воскресенье, 6 = суббота
+                    day != 0 && day != 6
+                } else {
+                    true
+                }
+            })
+            .take(5)
+            .map(|(&d, _)| d)
+            .collect();
+
+        if top_days.is_empty() {
+            if work_on_weekends {
+                top_days = vec![1, 2, 3, 4, 5, 6, 0];
+            } else {
+                top_days = vec![1, 2, 3, 4, 5]; // Пн-Пт по умолчанию
+            }
+        }
 
         OptimalWorkHours {
             start: top_hours.iter().copied().min().unwrap_or(9),
             end: top_hours.iter().copied().max().unwrap_or(18),
-            days: if top_days.is_empty() {
-                vec![1, 2, 3, 4, 5] // Пн-Пт по умолчанию
-            } else {
-                top_days
-            },
+            days: top_days,
         }
     }
 

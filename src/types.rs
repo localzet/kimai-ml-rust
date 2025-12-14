@@ -68,7 +68,28 @@ pub struct Settings {
     pub rate_per_minute: f64,
     #[serde(default)]
     pub project_settings: std::collections::HashMap<i32, ProjectSettings>,
+    #[serde(default)]
+    pub user_preferences: Option<UserPreferences>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserPreferences {
+    #[serde(default = "default_sleep_start")]
+    pub sleep_start_hour: i32, // 0-23
+    #[serde(default = "default_sleep_end")]
+    pub sleep_end_hour: i32, // 0-23
+    #[serde(default = "default_no_work_hours")]
+    pub no_work_before_sleep_hours: i32, // hours before sleep
+    #[serde(default = "default_work_on_weekends")]
+    pub work_on_weekends: bool,
+    #[serde(default)]
+    pub project_goals: std::collections::HashMap<i32, f64>, // project_id -> weekly_goal_hours
+}
+
+fn default_sleep_start() -> i32 { 0 }
+fn default_sleep_end() -> i32 { 8 }
+fn default_no_work_hours() -> i32 { 2 }
+fn default_work_on_weekends() -> bool { false }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Context {
