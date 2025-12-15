@@ -146,7 +146,7 @@ impl ProductivityAnalyzer {
         sorted_days.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
         
         let mut top_days: Vec<i32> = sorted_days.iter()
-            .filter(|(&&day, _)| {
+            .filter(|(&day, _)| {
                 if !work_on_weekends {
                     // 0 = воскресенье, 6 = суббота
                     day != 0 && day != 6
