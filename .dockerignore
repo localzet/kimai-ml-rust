@@ -1,9 +1,14 @@
 target/
+**/*.rs.bk
+*.log
+.env
+.env.*
+!.env.example
 .git/
 .gitignore
-*.md
 .vscode/
 .idea/
 *.swp
 *.swo
-
+*~
+.DS_Store
