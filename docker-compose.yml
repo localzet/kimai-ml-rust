@@ -1,27 +1,20 @@
-version: '3.8'
-
 services:
-  kimai-ml-rust:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: kimai-ml-rust
-    ports:
-      - "8000:8000"
+  kimai-ml:
+    image: ghcr.io/localzet/kimai-ml-rust:latest
+    container_name: kimai-ml
+    restart: always
     environment:
       - RUST_LOG=info
       - RUST_BACKTRACE=1
-    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8000/health || exit 1"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
     networks:
-      - kimai-ml-network
+      - external
 
 networks:
-  kimai-ml-network:
-    driver: bridge
-
+  external:
+    name: external
+    external: true

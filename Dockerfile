@@ -1,7 +1,7 @@
 # Multi-stage build для оптимизации размера образа
 
-# Stage 1: Builder
-FROM rust:1.75-slim AS builder
+# Stage 1: Builder - nightly Rust to support edition2024 lockfile/deps
+FROM rustlang/rust:nightly-slim AS builder
 
 WORKDIR /app
 
