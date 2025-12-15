@@ -2,9 +2,9 @@
 
 #![allow(non_snake_case)]
 
-use ndarray::{Array1, Array2, s};
-use crate::preprocessing::{FeatureEngineer, DataNormalizer};
-use crate::types::{WeekData, ForecastingOutput};
+use crate::preprocessing::{DataNormalizer, FeatureEngineer};
+use crate::types::{ForecastingOutput, WeekData};
+use ndarray::{s, Array1, Array2};
 
 /// Упрощенная Ridge Regression
 struct SimpleRidge {
@@ -63,13 +63,13 @@ impl SimpleRidge {
         // Решение через упрощенный метод (для небольших матриц)
         // В реальности нужна более сложная инверсия, но для простоты используем приближение
         self.weights = Some(self.solve_linear_system(&xtx, &xty)?);
-        
+
         // Bias (среднее значение y минус среднее предсказание)
         let y_mean = y.mean().unwrap_or(0.0);
         let x_mean: Array1<f64> = (0..n_features)
             .map(|j| (0..n_samples).map(|i| X[[i, j]]).sum::<f64>() / n_samples as f64)
             .collect();
-        
+
         if let Some(ref weights) = self.weights {
             let pred_mean: f64 = x_mean.iter().zip(weights.iter()).map(|(x, w)| x * w).sum();
             self.bias = Some(y_mean - pred_mean);
@@ -82,7 +82,7 @@ impl SimpleRidge {
         // Упрощенное решение через метод Гаусса (для небольших систем)
         let n = A.nrows();
         let mut augmented = Array2::zeros((n, n + 1));
-        
+
         for i in 0..n {
             for j in 0..n {
                 augmented[[i, j]] = A[[i, j]];
@@ -163,7 +163,9 @@ struct SimpleTree {
 }
 
 enum TreeNode {
-    Leaf { value: f64 },
+    Leaf {
+        value: f64,
+    },
     Split {
         feature: usize,
         threshold: f64,
@@ -190,7 +192,13 @@ impl SimpleTree {
         Ok(())
     }
 
-    fn build_tree(&self, X: &Array2<f64>, y: &Array1<f64>, depth: usize, indices: Vec<usize>) -> TreeNode {
+    fn build_tree(
+        &self,
+        X: &Array2<f64>,
+        y: &Array1<f64>,
+        depth: usize,
+        indices: Vec<usize>,
+    ) -> TreeNode {
         if depth >= self.max_depth || indices.len() < self.min_samples_split {
             // Лист: среднее значение
             let mean = indices.iter().map(|&i| y[i]).sum::<f64>() / indices.len() as f64;
@@ -217,20 +225,27 @@ impl SimpleTree {
                 let mut rng = rand::thread_rng();
                 let threshold = rng.gen_range(min_val..=max_val);
 
-                let (left_indices, right_indices): (Vec<usize>, Vec<usize>) = indices
-                    .iter()
-                    .partition(|&&i| X[[i, feature]] < threshold);
+                let (left_indices, right_indices): (Vec<usize>, Vec<usize>) =
+                    indices.iter().partition(|&&i| X[[i, feature]] < threshold);
 
                 if left_indices.is_empty() || right_indices.is_empty() {
                     continue;
                 }
 
                 // Вычисляем MSE
-                let left_mean = left_indices.iter().map(|&i| y[i]).sum::<f64>() / left_indices.len() as f64;
-                let right_mean = right_indices.iter().map(|&i| y[i]).sum::<f64>() / right_indices.len() as f64;
+                let left_mean =
+                    left_indices.iter().map(|&i| y[i]).sum::<f64>() / left_indices.len() as f64;
+                let right_mean =
+                    right_indices.iter().map(|&i| y[i]).sum::<f64>() / right_indices.len() as f64;
 
-                let left_mse: f64 = left_indices.iter().map(|&i| (y[i] - left_mean).powi(2)).sum();
-                let right_mse: f64 = right_indices.iter().map(|&i| (y[i] - right_mean).powi(2)).sum();
+                let left_mse: f64 = left_indices
+                    .iter()
+                    .map(|&i| (y[i] - left_mean).powi(2))
+                    .sum();
+                let right_mse: f64 = right_indices
+                    .iter()
+                    .map(|&i| (y[i] - right_mean).powi(2))
+                    .sum();
                 let total_mse = left_mse + right_mse;
 
                 if total_mse < best_score {
@@ -274,7 +289,12 @@ impl SimpleTree {
     fn predict_single(&self, node: &TreeNode, sample: &Array1<f64>) -> f64 {
         match node {
             TreeNode::Leaf { value } => *value,
-            TreeNode::Split { feature, threshold, left, right } => {
+            TreeNode::Split {
+                feature,
+                threshold,
+                left,
+                right,
+            } => {
                 if sample[*feature] < *threshold {
                     self.predict_single(left, sample)
                 } else {
@@ -337,12 +357,15 @@ impl ForecastingModel {
         if let (Some(ref tree), Some(ref linear)) = (&self.tree_model, &self.linear_model) {
             let tree_pred = tree.predict(&X_test_scaled)?;
             let linear_pred = linear.predict(&X_test_scaled)?;
-            
+
             // Ensemble
             let ensemble_pred: Array1<f64> = tree_pred * 0.7 + linear_pred * 0.3;
-            
+
             // MAE
-            let mae = (ensemble_pred - y_test).mapv(|x| x.abs()).mean().unwrap_or(0.0);
+            let mae = (ensemble_pred - y_test)
+                .mapv(|x| x.abs())
+                .mean()
+                .unwrap_or(0.0);
             tracing::info!("Forecasting model trained. MAE: {:.2}", mae);
         }
 
@@ -373,7 +396,7 @@ impl ForecastingModel {
         // Извлечение признаков для последней недели
         let (features, _) = FeatureEngineer::extract_temporal_features(weeks)?;
         let last_idx = features.nrows() - 1;
-        let last_week_features = features.slice(s![last_idx..last_idx+1, ..]).to_owned();
+        let last_week_features = features.slice(s![last_idx..last_idx + 1, ..]).to_owned();
 
         // Нормализация
         let X_scaled = self.normalizer.transform(&last_week_features)?;
@@ -402,7 +425,8 @@ impl ForecastingModel {
 
         // Определение тренда
         let trend = if weeks.len() >= 2 {
-            let recent_trend = weeks[weeks.len() - 1].total_hours - weeks[weeks.len() - 2].total_hours;
+            let recent_trend =
+                weeks[weeks.len() - 1].total_hours - weeks[weeks.len() - 2].total_hours;
             if recent_trend > 2.0 {
                 "increasing"
             } else if recent_trend < -2.0 {
@@ -418,7 +442,7 @@ impl ForecastingModel {
         let mut weekly_hours_by_project = std::collections::HashMap::new();
         if let Some(last_week) = weeks.last() {
             let total_current = last_week.total_hours;
-            
+
             if total_current > 0.0 {
                 // Без целей - пропорционально текущему распределению
                 for stat in &last_week.project_stats {

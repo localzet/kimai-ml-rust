@@ -1,7 +1,7 @@
 //! Обучение на ошибках - улучшение моделей на основе фактических результатов
 
-use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PredictionError {
@@ -33,7 +33,8 @@ impl LearningModule {
     }
 
     pub fn get_correction_factor(&self, prediction_type: &str) -> f64 {
-        let relevant_errors: Vec<&PredictionError> = self.errors
+        let relevant_errors: Vec<&PredictionError> = self
+            .errors
             .iter()
             .filter(|e| e.prediction_type == prediction_type)
             .collect();
@@ -43,20 +44,23 @@ impl LearningModule {
         }
 
         // Вычисляем среднюю ошибку
-        let avg_error: f64 = relevant_errors.iter()
-            .map(|e| e.error.abs())
-            .sum::<f64>() / relevant_errors.len() as f64;
+        let avg_error: f64 = relevant_errors.iter().map(|e| e.error.abs()).sum::<f64>()
+            / relevant_errors.len() as f64;
 
         // Вычисляем средний процент ошибки
-        let avg_percent_error: f64 = relevant_errors.iter()
+        let avg_percent_error: f64 = relevant_errors
+            .iter()
             .filter(|e| e.actual_value != 0.0)
             .map(|e| (e.error / e.actual_value).abs())
-            .sum::<f64>() / relevant_errors.iter().filter(|e| e.actual_value != 0.0).count() as f64;
+            .sum::<f64>()
+            / relevant_errors
+                .iter()
+                .filter(|e| e.actual_value != 0.0)
+                .count() as f64;
 
         // Корректирующий фактор: если предсказания завышены, уменьшаем, если занижены - увеличиваем
-        let bias: f64 = relevant_errors.iter()
-            .map(|e| e.error)
-            .sum::<f64>() / relevant_errors.len() as f64;
+        let bias: f64 =
+            relevant_errors.iter().map(|e| e.error).sum::<f64>() / relevant_errors.len() as f64;
 
         // Если есть систематическая ошибка (bias), корректируем
         if bias.abs() > avg_error * 0.1 {
@@ -68,7 +72,8 @@ impl LearningModule {
     }
 
     pub fn get_confidence_adjustment(&self, prediction_type: &str) -> f64 {
-        let relevant_errors: Vec<&PredictionError> = self.errors
+        let relevant_errors: Vec<&PredictionError> = self
+            .errors
             .iter()
             .filter(|e| e.prediction_type == prediction_type)
             .collect();
@@ -78,16 +83,17 @@ impl LearningModule {
         }
 
         // Вычисляем стандартное отклонение ошибок
-        let avg_error: f64 = relevant_errors.iter()
-            .map(|e| e.error.abs())
-            .sum::<f64>() / relevant_errors.len() as f64;
+        let avg_error: f64 = relevant_errors.iter().map(|e| e.error.abs()).sum::<f64>()
+            / relevant_errors.len() as f64;
 
-        let variance: f64 = relevant_errors.iter()
+        let variance: f64 = relevant_errors
+            .iter()
             .map(|e| {
                 let diff = e.error.abs() - avg_error;
                 diff * diff
             })
-            .sum::<f64>() / relevant_errors.len() as f64;
+            .sum::<f64>()
+            / relevant_errors.len() as f64;
 
         let std_dev = variance.sqrt();
 
@@ -130,4 +136,3 @@ impl Default for LearningModule {
         Self::new(1000)
     }
 }
-

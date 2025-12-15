@@ -86,10 +86,18 @@ pub struct UserPreferences {
     pub project_goals: std::collections::HashMap<i32, f64>, // project_id -> weekly_goal_hours
 }
 
-fn default_sleep_start() -> i32 { 0 }
-fn default_sleep_end() -> i32 { 8 }
-fn default_no_work_hours() -> i32 { 2 }
-fn default_work_on_weekends() -> bool { false }
+fn default_sleep_start() -> i32 {
+    0
+}
+fn default_sleep_end() -> i32 {
+    8
+}
+fn default_no_work_hours() -> i32 {
+    2
+}
+fn default_work_on_weekends() -> bool {
+    false
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Context {
@@ -111,7 +119,7 @@ pub struct ForecastingOutput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnomalyOutput {
     pub entry_id: i32,
-    pub r#type: String, // "duration" | "time" | "pattern" | "project"
+    pub r#type: String,   // "duration" | "time" | "pattern" | "project"
     pub severity: String, // "low" | "medium" | "high"
     pub reason: String,
     pub score: f64,
@@ -161,4 +169,3 @@ pub struct MLOutputData {
     pub recommendations: Option<Vec<RecommendationOutput>>,
     pub productivity: Option<ProductivityOutput>,
 }
-

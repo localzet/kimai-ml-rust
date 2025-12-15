@@ -12,7 +12,7 @@ use tower_http::cors::{Any, CorsLayer};
 
 use kimai_ml::{
     types::{MLInputData, MLOutputData},
-    ForecastingModel, AnomalyDetector, RecommendationEngine, LearningModule,
+    AnomalyDetector, ForecastingModel, LearningModule, RecommendationEngine,
 };
 
 #[derive(Clone)]
@@ -33,7 +33,9 @@ async fn main() {
     let state = AppState {
         forecasting_model: std::sync::Arc::new(tokio::sync::Mutex::new(ForecastingModel::new())),
         anomaly_detector: std::sync::Arc::new(tokio::sync::Mutex::new(AnomalyDetector::new(0.1))),
-        recommendation_engine: std::sync::Arc::new(tokio::sync::Mutex::new(RecommendationEngine::new())),
+        recommendation_engine: std::sync::Arc::new(tokio::sync::Mutex::new(
+            RecommendationEngine::new(),
+        )),
         learning_module: std::sync::Arc::new(tokio::sync::Mutex::new(LearningModule::new(1000))),
     };
 
@@ -75,20 +77,32 @@ async fn predict(
     State(state): State<AppState>,
     Json(data): Json<MLInputData>,
 ) -> Result<Json<MLOutputData>, String> {
-    tracing::info!("Predict request: {} weeks, {} entries", data.weeks.len(), data.timesheets.len());
+    tracing::info!(
+        "Predict request: {} weeks, {} entries",
+        data.weeks.len(),
+        data.timesheets.len()
+    );
 
-    let weeks: Vec<kimai_ml::types::WeekData> = data.weeks.iter().map(|w| kimai_ml::types::WeekData {
-        year: w.year,
-        week: w.week,
-        total_minutes: w.total_minutes,
-        total_hours: w.total_hours,
-        total_amount: w.total_amount,
-        project_stats: w.project_stats.iter().map(|s| kimai_ml::types::ProjectStats {
-            project_id: s.project_id,
-            minutes: s.minutes,
-            hours: s.hours,
-        }).collect(),
-    }).collect();
+    let weeks: Vec<kimai_ml::types::WeekData> = data
+        .weeks
+        .iter()
+        .map(|w| kimai_ml::types::WeekData {
+            year: w.year,
+            week: w.week,
+            total_minutes: w.total_minutes,
+            total_hours: w.total_hours,
+            total_amount: w.total_amount,
+            project_stats: w
+                .project_stats
+                .iter()
+                .map(|s| kimai_ml::types::ProjectStats {
+                    project_id: s.project_id,
+                    minutes: s.minutes,
+                    hours: s.hours,
+                })
+                .collect(),
+        })
+        .collect();
 
     let mut model = state.forecasting_model.lock().await;
 
@@ -98,7 +112,7 @@ async fn predict(
         } else {
             weeks.iter().map(|w| w.total_hours).sum::<f64>() / weeks.len() as f64
         };
-        
+
         // Учитываем цели по проектам
         let mut weekly_hours_by_project = std::collections::HashMap::new();
         if let Some(prefs) = &data.settings.user_preferences {
@@ -110,7 +124,7 @@ async fn predict(
                 }
             }
         }
-        
+
         return Ok(Json(MLOutputData {
             forecasting: Some(kimai_ml::types::ForecastingOutput {
                 weekly_hours: avg_hours,
@@ -132,16 +146,16 @@ async fn predict(
 
     // Прогнозирование
     let mut forecasting_result = model.predict(&weeks)?;
-    
+
     // Применяем корректирующий фактор из модуля обучения
     let learning = state.learning_module.lock().await;
     let correction_factor = learning.get_correction_factor("forecasting");
     let confidence_adjustment = learning.get_confidence_adjustment("forecasting");
-    
+
     forecasting_result.weekly_hours *= correction_factor;
     forecasting_result.monthly_hours *= correction_factor;
     forecasting_result.confidence *= confidence_adjustment;
-    
+
     // Учитываем цели по проектам при распределении
     if let Some(prefs) = &data.settings.user_preferences {
         let total_goals: f64 = prefs.project_goals.values().sum();
@@ -149,11 +163,13 @@ async fn predict(
             forecasting_result.weekly_hours_by_project.clear();
             for (project_id, goal_hours) in &prefs.project_goals {
                 let ratio = goal_hours / total_goals;
-                forecasting_result.weekly_hours_by_project.insert(*project_id, forecasting_result.weekly_hours * ratio);
+                forecasting_result
+                    .weekly_hours_by_project
+                    .insert(*project_id, forecasting_result.weekly_hours * ratio);
             }
         }
     }
-    
+
     Ok(Json(MLOutputData {
         forecasting: Some(forecasting_result),
         anomalies: None,
@@ -166,7 +182,10 @@ async fn detect_anomalies(
     State(state): State<AppState>,
     Json(data): Json<MLInputData>,
 ) -> Result<Json<MLOutputData>, String> {
-    tracing::info!("Detect anomalies request: {} entries", data.timesheets.len());
+    tracing::info!(
+        "Detect anomalies request: {} entries",
+        data.timesheets.len()
+    );
 
     if data.timesheets.is_empty() {
         return Ok(Json(MLOutputData {
@@ -177,23 +196,27 @@ async fn detect_anomalies(
         }));
     }
 
-    let entries: Vec<kimai_ml::types::TimesheetEntry> = data.timesheets.iter().map(|e| kimai_ml::types::TimesheetEntry {
-        id: e.id,
-        begin: e.begin.clone(),
-        end: e.end.clone(),
-        duration: e.duration,
-        project_id: e.project_id,
-        project_name: e.project_name.clone(),
-        activity_id: e.activity_id,
-        activity_name: e.activity_name.clone(),
-        description: e.description.clone(),
-        tags: e.tags.clone(),
-        day_of_week: e.day_of_week,
-        hour_of_day: e.hour_of_day,
-        week_of_year: e.week_of_year,
-        month: e.month,
-        year: e.year,
-    }).collect();
+    let entries: Vec<kimai_ml::types::TimesheetEntry> = data
+        .timesheets
+        .iter()
+        .map(|e| kimai_ml::types::TimesheetEntry {
+            id: e.id,
+            begin: e.begin.clone(),
+            end: e.end.clone(),
+            duration: e.duration,
+            project_id: e.project_id,
+            project_name: e.project_name.clone(),
+            activity_id: e.activity_id,
+            activity_name: e.activity_name.clone(),
+            description: e.description.clone(),
+            tags: e.tags.clone(),
+            day_of_week: e.day_of_week,
+            hour_of_day: e.hour_of_day,
+            week_of_year: e.week_of_year,
+            month: e.month,
+            year: e.year,
+        })
+        .collect();
 
     let mut detector = state.anomaly_detector.lock().await;
 
@@ -235,29 +258,36 @@ async fn analyze_productivity(
     State(_state): State<AppState>,
     Json(data): Json<MLInputData>,
 ) -> Result<Json<MLOutputData>, String> {
-    tracing::info!("Productivity analysis request: {} entries", data.timesheets.len());
+    tracing::info!(
+        "Productivity analysis request: {} entries",
+        data.timesheets.len()
+    );
 
     if data.timesheets.is_empty() {
         return Err("No timesheet entries provided".to_string());
     }
 
-    let entries: Vec<kimai_ml::types::TimesheetEntry> = data.timesheets.iter().map(|e| kimai_ml::types::TimesheetEntry {
-        id: e.id,
-        begin: e.begin.clone(),
-        end: e.end.clone(),
-        duration: e.duration,
-        project_id: e.project_id,
-        project_name: e.project_name.clone(),
-        activity_id: e.activity_id,
-        activity_name: e.activity_name.clone(),
-        description: e.description.clone(),
-        tags: e.tags.clone(),
-        day_of_week: e.day_of_week,
-        hour_of_day: e.hour_of_day,
-        week_of_year: e.week_of_year,
-        month: e.month,
-        year: e.year,
-    }).collect();
+    let entries: Vec<kimai_ml::types::TimesheetEntry> = data
+        .timesheets
+        .iter()
+        .map(|e| kimai_ml::types::TimesheetEntry {
+            id: e.id,
+            begin: e.begin.clone(),
+            end: e.end.clone(),
+            duration: e.duration,
+            project_id: e.project_id,
+            project_name: e.project_name.clone(),
+            activity_id: e.activity_id,
+            activity_name: e.activity_name.clone(),
+            description: e.description.clone(),
+            tags: e.tags.clone(),
+            day_of_week: e.day_of_week,
+            hour_of_day: e.hour_of_day,
+            week_of_year: e.week_of_year,
+            month: e.month,
+            year: e.year,
+        })
+        .collect();
 
     // Создаем анализатор с предпочтениями пользователя
     let preferences = data.settings.user_preferences.clone();
@@ -284,11 +314,15 @@ async fn learn_from_error(
     State(_state): State<AppState>,
     Json(req): Json<LearnRequest>,
 ) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
-    tracing::info!("Learning from error: {} predicted={}, actual={}", 
-        req.prediction_type, req.predicted_value, req.actual_value);
+    tracing::info!(
+        "Learning from error: {} predicted={}, actual={}",
+        req.prediction_type,
+        req.predicted_value,
+        req.actual_value
+    );
 
     let error = req.predicted_value - req.actual_value;
-    
+
     let mut learning = _state.learning_module.lock().await;
     learning.record_error(kimai_ml::PredictionError {
         prediction_type: req.prediction_type.clone(),
@@ -307,4 +341,3 @@ async fn learn_from_error(
         "confidence_adjustment": confidence_adjustment,
     })))
 }
-

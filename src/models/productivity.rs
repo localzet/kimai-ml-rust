@@ -1,9 +1,12 @@
 //! Анализ продуктивности
 
-use std::collections::HashMap;
 use chrono::DateTime;
+use std::collections::HashMap;
 
-use crate::types::{TimesheetEntry, ProductivityOutput, OptimalWorkHours, BreakRecommendations, EfficiencyPoint, UserPreferences};
+use crate::types::{
+    BreakRecommendations, EfficiencyPoint, OptimalWorkHours, ProductivityOutput, TimesheetEntry,
+    UserPreferences,
+};
 
 #[derive(Default)]
 pub struct ProductivityAnalyzer {
@@ -79,7 +82,9 @@ impl ProductivityAnalyzer {
             // Извлекаем дату из begin
             let date_key = entry.begin.split('T').next().unwrap_or("").to_string();
 
-            let (work, days) = daily_data.entry(day).or_insert_with(|| (0, std::collections::HashSet::new()));
+            let (work, days) = daily_data
+                .entry(day)
+                .or_insert_with(|| (0, std::collections::HashSet::new()));
             *work += duration;
             days.insert(date_key);
         }
@@ -106,7 +111,8 @@ impl ProductivityAnalyzer {
         let work_on_weekends = prefs.map(|p| p.work_on_weekends).unwrap_or(false);
 
         // Фильтруем часы с учетом предпочтений пользователя
-        let mut filtered_efficiency: Vec<_> = hourly_efficiency.iter()
+        let mut filtered_efficiency: Vec<_> = hourly_efficiency
+            .iter()
             .filter(|e| {
                 // Исключаем часы сна
                 if e.hour >= sleep_start && e.hour < sleep_end {
@@ -128,7 +134,11 @@ impl ProductivityAnalyzer {
             .collect();
 
         // Сортировка по эффективности
-        filtered_efficiency.sort_by(|a, b| b.efficiency.partial_cmp(&a.efficiency).unwrap_or(std::cmp::Ordering::Equal));
+        filtered_efficiency.sort_by(|a, b| {
+            b.efficiency
+                .partial_cmp(&a.efficiency)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Топ-8 часов
         let top_hours: Vec<i32> = filtered_efficiency
@@ -141,8 +151,9 @@ impl ProductivityAnalyzer {
         // Топ дней (исключаем выходные, если не работаем на выходных)
         let mut sorted_days: Vec<_> = daily_efficiency.iter().collect();
         sorted_days.sort_by(|a, b| b.1.partial_cmp(a.1).unwrap_or(std::cmp::Ordering::Equal));
-        
-        let mut top_days: Vec<i32> = sorted_days.iter()
+
+        let mut top_days: Vec<i32> = sorted_days
+            .iter()
             .filter(|(&day, _)| {
                 if !work_on_weekends {
                     // 0 = воскресенье, 6 = суббота
@@ -180,7 +191,8 @@ impl ProductivityAnalyzer {
             };
         }
 
-        let avg_session_duration = sessions.iter().map(|s| s.duration).sum::<i32>() as f64 / sessions.len() as f64;
+        let avg_session_duration =
+            sessions.iter().map(|s| s.duration).sum::<i32>() as f64 / sessions.len() as f64;
 
         // Рекомендации на основе средней длительности сессии
         let (break_duration, break_frequency) = if avg_session_duration > 120.0 {
@@ -202,7 +214,10 @@ impl ProductivityAnalyzer {
         let mut daily_entries: HashMap<String, Vec<&TimesheetEntry>> = HashMap::new();
         for entry in entries {
             if let Some(date_key) = entry.begin.split('T').next() {
-                daily_entries.entry(date_key.to_string()).or_default().push(entry);
+                daily_entries
+                    .entry(date_key.to_string())
+                    .or_default()
+                    .push(entry);
             }
         }
 
@@ -216,7 +231,10 @@ impl ProductivityAnalyzer {
             // Объединение близких записей в сессии
             let mut current_session = Session {
                 start: sorted[0].begin.clone(),
-                end: sorted[0].end.clone().unwrap_or_else(|| sorted[0].begin.clone()),
+                end: sorted[0]
+                    .end
+                    .clone()
+                    .unwrap_or_else(|| sorted[0].begin.clone()),
                 duration: sorted[0].duration,
             };
 
@@ -229,7 +247,8 @@ impl ProductivityAnalyzer {
                     let gap = (next_start - current_end).num_minutes();
 
                     if gap < 30 {
-                        current_session.end = entry.end.clone().unwrap_or_else(|| entry.begin.clone());
+                        current_session.end =
+                            entry.end.clone().unwrap_or_else(|| entry.begin.clone());
                         current_session.duration += entry.duration;
                     } else {
                         sessions.push(current_session);
@@ -255,4 +274,3 @@ struct Session {
     end: String,
     duration: i32,
 }
-

@@ -9,7 +9,9 @@ pub struct FeatureEngineer;
 
 impl FeatureEngineer {
     //! Извлечение временных признаков из недель
-    pub fn extract_temporal_features(weeks: &[WeekData]) -> Result<(Array2<f64>, Array1<f64>), String> {
+    pub fn extract_temporal_features(
+        weeks: &[WeekData],
+    ) -> Result<(Array2<f64>, Array1<f64>), String> {
         if weeks.is_empty() {
             return Err("No weeks provided".to_string());
         }
@@ -76,7 +78,8 @@ impl FeatureEngineer {
             if i >= 4 {
                 let values: Vec<f64> = weeks[i - 4..i].iter().map(|w| w.total_hours).collect();
                 let mean = values.iter().sum::<f64>() / values.len() as f64;
-                let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
+                let variance =
+                    values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
                 features[[i, feature_idx]] = variance.sqrt();
             }
 
@@ -98,7 +101,10 @@ impl FeatureEngineer {
         let mut project_durations: HashMap<i32, Vec<i32>> = HashMap::new();
         for entry in entries {
             if let Some(project_id) = entry.project_id {
-                project_durations.entry(project_id).or_default().push(entry.duration);
+                project_durations
+                    .entry(project_id)
+                    .or_default()
+                    .push(entry.duration);
             }
         }
 
@@ -124,7 +130,11 @@ impl FeatureEngineer {
             features[[i, 2]] = entry.day_of_week as f64 / 6.0;
 
             // Отношение к среднему по проекту
-            let project_avg_val = entry.project_id.and_then(|id| project_avg.get(&id)).copied().unwrap_or(entry.duration as f64);
+            let project_avg_val = entry
+                .project_id
+                .and_then(|id| project_avg.get(&id))
+                .copied()
+                .unwrap_or(entry.duration as f64);
             let duration_ratio = if project_avg_val > 0.0 {
                 (entry.duration as f64 / project_avg_val).min(5.0)
             } else {
@@ -139,4 +149,3 @@ impl FeatureEngineer {
         features
     }
 }
-

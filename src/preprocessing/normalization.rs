@@ -71,4 +71,3 @@ impl Default for DataNormalizer {
         Self::new()
     }
 }
-

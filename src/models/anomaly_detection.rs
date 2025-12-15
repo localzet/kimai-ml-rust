@@ -3,7 +3,7 @@
 use ndarray::Array2;
 
 use crate::preprocessing::FeatureEngineer;
-use crate::types::{TimesheetEntry, AnomalyOutput};
+use crate::types::{AnomalyOutput, TimesheetEntry};
 
 /// Упрощенный Isolation Forest
 pub struct IsolationForest {
@@ -115,10 +115,20 @@ impl IsolationForest {
         scores.iter().map(|s| (-s).exp()).collect()
     }
 
-    fn path_length(&self, node: &IsolationTree, sample: &ndarray::Array1<f64>, current_depth: usize) -> f64 {
+    fn path_length(
+        &self,
+        node: &IsolationTree,
+        sample: &ndarray::Array1<f64>,
+        current_depth: usize,
+    ) -> f64 {
         match node {
             IsolationTree::Leaf => current_depth as f64,
-            IsolationTree::Split { feature, threshold, left, right } => {
+            IsolationTree::Split {
+                feature,
+                threshold,
+                left,
+                right,
+            } => {
                 if sample[*feature] < *threshold {
                     self.path_length(left, sample, current_depth + 1)
                 } else {
@@ -150,7 +160,7 @@ impl AnomalyDetector {
         }
 
         let features = FeatureEngineer::extract_anomaly_features(entries);
-        
+
         let max_samples = (entries.len() as f64 * 0.8) as usize;
         let mut forest = IsolationForest::new(100, max_samples, 10);
         forest.fit(&features);
@@ -171,15 +181,18 @@ impl AnomalyDetector {
         }
 
         let features = FeatureEngineer::extract_anomaly_features(entries);
-        let forest = self.isolation_forest.as_ref().ok_or("Forest not available")?;
-        
+        let forest = self
+            .isolation_forest
+            .as_ref()
+            .ok_or("Forest not available")?;
+
         let scores = forest.predict(&features);
 
         // Нормализация scores к [0, 1]
         let min_score = scores.iter().copied().fold(f64::INFINITY, f64::min);
         let max_score = scores.iter().copied().fold(f64::NEG_INFINITY, f64::max);
         let score_range = (max_score - min_score).max(1e-10);
-        
+
         let normalized_scores: Vec<f64> = scores
             .iter()
             .map(|s| 1.0 - (s - min_score) / score_range)
@@ -189,7 +202,7 @@ impl AnomalyDetector {
 
         for (i, entry) in entries.iter().enumerate() {
             let score = normalized_scores[i];
-            
+
             // Порог для аномалии (на основе contamination)
             if score > self.contamination {
                 let severity = self.determine_severity(entry, score);
@@ -245,7 +258,10 @@ impl AnomalyDetector {
         let mut reasons = Vec::new();
 
         if entry.duration > 8 * 60 {
-            reasons.push(format!("Очень длинная сессия: {:.1} часов", entry.duration as f64 / 60.0));
+            reasons.push(format!(
+                "Очень длинная сессия: {:.1} часов",
+                entry.duration as f64 / 60.0
+            ));
         } else if entry.duration < 5 {
             reasons.push(format!("Очень короткая сессия: {} минут", entry.duration));
         }
@@ -273,4 +289,3 @@ impl Default for AnomalyDetector {
         Self::new(0.1)
     }
 }
-

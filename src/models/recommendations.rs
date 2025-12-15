@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use crate::types::{MLInputData, RecommendationOutput, Project};
+use crate::types::{MLInputData, Project, RecommendationOutput};
 
 pub struct RecommendationEngine {
     // KMeans не используется, используем простую эвристику
@@ -26,7 +26,11 @@ impl RecommendationEngine {
         let time_distribution = self.analyze_time_distribution(&data.weeks);
 
         // 4. Генерация рекомендаций
-        recommendations.extend(self.recommend_time_allocation(&project_efficiency, &time_distribution, data));
+        recommendations.extend(self.recommend_time_allocation(
+            &project_efficiency,
+            &time_distribution,
+            data,
+        ));
         recommendations.extend(self.recommend_project_priority(&project_efficiency, data));
         recommendations.extend(self.recommend_schedule_optimization(data));
 
@@ -68,14 +72,15 @@ impl RecommendationEngine {
         // Упрощенная кластеризация на основе средних значений
         // Разделяем проекты на группы по размеру (малые/средние/большие)
         let mut clusters = HashMap::new();
-        
+
         if !total_hours_vec.is_empty() {
             // Вычисляем средние значения признаков
-            let avg_total_hours: f64 = total_hours_vec.iter().sum::<f64>() / total_hours_vec.len() as f64;
-            
+            let avg_total_hours: f64 =
+                total_hours_vec.iter().sum::<f64>() / total_hours_vec.len() as f64;
+
             for (idx, project_id) in project_ids.iter().enumerate() {
                 let total_hours = total_hours_vec[idx];
-                
+
                 // Простая кластеризация: 0 = малые, 1 = средние, 2 = большие
                 let cluster = if total_hours < avg_total_hours * 0.5 {
                     0 // Малые проекты
@@ -84,7 +89,7 @@ impl RecommendationEngine {
                 } else {
                     1 // Средние проекты
                 };
-                
+
                 clusters.insert(*project_id, cluster);
             }
         } else {
@@ -93,7 +98,7 @@ impl RecommendationEngine {
                 clusters.insert(project_id, 0);
             }
         }
-        
+
         clusters
     }
 
@@ -124,9 +129,10 @@ impl RecommendationEngine {
         data: &MLInputData,
     ) -> Vec<RecommendationOutput> {
         let mut recommendations = Vec::new();
-        
+
         // Учитываем цели по проектам из предпочтений пользователя
-        let project_goals: HashMap<i32, f64> = data.settings
+        let project_goals: HashMap<i32, f64> = data
+            .settings
             .user_preferences
             .as_ref()
             .map(|prefs| prefs.project_goals.clone())
@@ -135,13 +141,13 @@ impl RecommendationEngine {
         if efficiency.len() < 2 {
             return recommendations;
         }
-        
+
         // Если есть цели по проектам, рекомендуем равномерное распределение
         if !project_goals.is_empty() {
             for (project_id, goal_hours) in &project_goals {
                 let current_hours = distribution.get(project_id).copied().unwrap_or(0.0);
                 let project_name = self.get_project_name(data, *project_id);
-                
+
                 if current_hours < *goal_hours * 0.9 {
                     recommendations.push(RecommendationOutput {
                         r#type: "time_allocation".to_string(),
@@ -181,10 +187,17 @@ impl RecommendationEngine {
                         r#type: "time_allocation".to_string(),
                         priority: "high".to_string(),
                         title: "Увеличьте время на высокоэффективные проекты".to_string(),
-                        description: format!("Проект '{}' показывает высокую эффективность", project_name),
+                        description: format!(
+                            "Проект '{}' показывает высокую эффективность",
+                            project_name
+                        ),
                         action_items: vec![
-                            format!("Увеличьте время на проект до {:.1} часов/неделю", recommended_hours),
-                            "Перераспределите 15-20% времени с менее эффективных проектов".to_string(),
+                            format!(
+                                "Увеличьте время на проект до {:.1} часов/неделю",
+                                recommended_hours
+                            ),
+                            "Перераспределите 15-20% времени с менее эффективных проектов"
+                                .to_string(),
                         ],
                         expected_impact: "Потенциальное увеличение дохода на 10-15%".to_string(),
                         confidence: 0.75,
@@ -210,7 +223,11 @@ impl RecommendationEngine {
         let mut sorted: Vec<_> = efficiency.iter().collect();
         sorted.sort_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal));
 
-        let low_efficiency: Vec<_> = sorted.iter().take(3).filter(|(_, &eff)| eff > 0.0).collect();
+        let low_efficiency: Vec<_> = sorted
+            .iter()
+            .take(3)
+            .filter(|(_, &eff)| eff > 0.0)
+            .collect();
 
         if let Some((&project_id, _)) = low_efficiency.first() {
             let project_name = self.get_project_name(data, project_id);
@@ -248,7 +265,8 @@ impl RecommendationEngine {
         if !hourly_distribution.is_empty() {
             let mut sorted: Vec<_> = hourly_distribution.iter().collect();
             sorted.sort_by(|a, b| b.1.cmp(a.1));
-            let top_hours: Vec<String> = sorted.iter().take(3).map(|(&h, _)| h.to_string()).collect();
+            let top_hours: Vec<String> =
+                sorted.iter().take(3).map(|(&h, _)| h.to_string()).collect();
 
             recommendations.push(RecommendationOutput {
                 r#type: "schedule_optimization".to_string(),
@@ -281,4 +299,3 @@ impl Default for RecommendationEngine {
         Self::new()
     }
 }
-
