@@ -1,4 +1,4 @@
-/// Типы данных для ML модуля
+//! Типы данных для ML модуля
 
 use serde::{Deserialize, Serialize};
 

@@ -1,4 +1,4 @@
-/// Kimai ML - Rust библиотека
+//! Kimai ML - Rust библиотека
 
 pub mod types;
 pub mod models;

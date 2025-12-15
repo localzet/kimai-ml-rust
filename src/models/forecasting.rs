@@ -1,4 +1,6 @@
-/// Модель прогнозирования времени
+//! Модель прогнозирования времени
+
+#![allow(non_snake_case)]
 
 use ndarray::{Array1, Array2, s};
 use crate::preprocessing::{FeatureEngineer, DataNormalizer};

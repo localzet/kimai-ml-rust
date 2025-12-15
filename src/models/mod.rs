@@ -1,4 +1,4 @@
-/// ML модели
+//! ML модели
 
 pub mod forecasting;
 pub mod anomaly_detection;

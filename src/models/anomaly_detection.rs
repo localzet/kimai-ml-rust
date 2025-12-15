@@ -1,4 +1,4 @@
-/// Обнаружение аномалий в записях времени
+//! Обнаружение аномалий в записях времени
 
 use ndarray::Array2;
 
@@ -99,8 +99,7 @@ impl IsolationForest {
         let mut scores = vec![0.0; features.nrows()];
 
         for tree in &self.trees {
-            for i in 0..features.nrows() {
-                let row = features.row(i);
+            for (i, row) in features.rows().into_iter().enumerate() {
                 let path_length = self.path_length(tree, &row.to_owned(), 0);
                 scores[i] += path_length;
             }
