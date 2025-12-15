@@ -9,7 +9,6 @@ use axum::{
 };
 use serde::Deserialize;
 use tower_http::cors::{Any, CorsLayer};
-use tracing_subscriber;
 
 use kimai_ml::{
     types::{MLInputData, MLOutputData},
