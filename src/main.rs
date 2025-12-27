@@ -106,6 +106,14 @@ async fn predict(
 
     let mut model = state.forecasting_model.lock().await;
 
+    // Read optional model choice from payload options
+    let model_choice = data
+        .options
+        .as_ref()
+        .and_then(|o| o.get("model"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
     if weeks.len() < 8 {
         let avg_hours = if weeks.is_empty() {
             0.0
@@ -145,7 +153,11 @@ async fn predict(
     }
 
     // Прогнозирование
-    let mut forecasting_result = model.predict(&weeks)?;
+    let mut forecasting_result = if let Some(ref mc) = model_choice {
+        model.predict_with_choice(&weeks, Some(mc))?
+    } else {
+        model.predict(&weeks)?
+    };
 
     // Применяем корректирующий фактор из модуля обучения
     let learning = state.learning_module.lock().await;

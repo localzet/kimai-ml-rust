@@ -1,6 +1,7 @@
 //! Типы данных для ML модуля
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TimesheetEntry {
@@ -61,6 +62,8 @@ pub struct MLInputData {
     pub weeks: Vec<WeekData>,
     pub settings: Settings,
     pub context: Option<Context>,
+    #[serde(default)]
+    pub options: Option<JsonValue>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

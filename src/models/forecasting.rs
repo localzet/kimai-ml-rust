@@ -460,6 +460,116 @@ impl ForecastingModel {
             trend: trend.to_string(),
         })
     }
+
+    /// Predict with optional model choice. If `choice` is Some("linear") will use linear model only,
+    /// if Some("tree") will use tree only, otherwise ensemble (default).
+    pub fn predict_with_choice(
+        &self,
+        weeks: &[WeekData],
+        choice: Option<&str>,
+    ) -> Result<ForecastingOutput, String> {
+        if !self.is_trained {
+            return Err("Model not trained".to_string());
+        }
+
+        if weeks.len() < 4 {
+            let avg_hours = if weeks.is_empty() {
+                0.0
+            } else {
+                weeks.iter().map(|w| w.total_hours).sum::<f64>() / weeks.len() as f64
+            };
+            return Ok(ForecastingOutput {
+                weekly_hours: avg_hours,
+                weekly_hours_by_project: std::collections::HashMap::new(),
+                monthly_hours: avg_hours * 4.0,
+                confidence: 0.3,
+                trend: "stable".to_string(),
+            });
+        }
+
+        // extract features for last week
+        let (features, _) = FeatureEngineer::extract_temporal_features(weeks)?;
+        let last_idx = features.nrows() - 1;
+        let last_week_features = features.slice(s![last_idx..last_idx + 1, ..]).to_owned();
+        let X_scaled = self.normalizer.transform(&last_week_features)?;
+
+        // obtain predictions according to choice
+        // obtain first-element predictions (f64) to avoid moving large Array1 values
+        let tree_pred_opt: Option<f64> = if let Some(ref tree) = self.tree_model {
+            Some(tree.predict(&X_scaled)?[0])
+        } else {
+            None
+        };
+        let linear_pred_opt: Option<f64> = if let Some(ref linear) = self.linear_model {
+            Some(linear.predict(&X_scaled)?[0])
+        } else {
+            None
+        };
+
+        let ensemble_pred = match choice.unwrap_or("auto") {
+            "linear" => {
+                if let Some(lp) = linear_pred_opt {
+                    lp
+                } else {
+                    return Err("Linear model not available".to_string());
+                }
+            }
+            "tree" => {
+                if let Some(tp) = tree_pred_opt {
+                    tp
+                } else {
+                    return Err("Tree model not available".to_string());
+                }
+            }
+            _ => {
+                // default ensemble weighting: tree 0.7, linear 0.3
+                let tp = tree_pred_opt.ok_or_else(|| "Tree model not available".to_string())?;
+                let lp = linear_pred_opt.ok_or_else(|| "Linear model not available".to_string())?;
+                tp * 0.7 + lp * 0.3
+            }
+        };
+
+        // compute confidence similarly
+        let pred_std = match (tree_pred_opt, linear_pred_opt) {
+            (Some(tp), Some(lp)) => (tp - lp).abs(),
+            _ => 0.0,
+        };
+        let confidence = (1.0 / (1.0 + pred_std)).min(1.0);
+
+        // determine trend
+        let trend = if weeks.len() >= 2 {
+            let recent_trend =
+                weeks[weeks.len() - 1].total_hours - weeks[weeks.len() - 2].total_hours;
+            if recent_trend > 2.0 {
+                "increasing"
+            } else if recent_trend < -2.0 {
+                "decreasing"
+            } else {
+                "stable"
+            }
+        } else {
+            "stable"
+        };
+
+        let mut weekly_hours_by_project = std::collections::HashMap::new();
+        if let Some(last_week) = weeks.last() {
+            let total_current = last_week.total_hours;
+            if total_current > 0.0 {
+                for stat in &last_week.project_stats {
+                    let ratio = stat.hours / total_current;
+                    weekly_hours_by_project.insert(stat.project_id, ensemble_pred * ratio);
+                }
+            }
+        }
+
+        Ok(ForecastingOutput {
+            weekly_hours: ensemble_pred,
+            weekly_hours_by_project,
+            monthly_hours: ensemble_pred * 4.0,
+            confidence,
+            trend: trend.to_string(),
+        })
+    }
 }
 
 impl Default for ForecastingModel {
